@@ -7,7 +7,7 @@ from tensorflow.keras import backend as K
 
 # Network Architecture
 from keras.models import Model
-from keras.layers import Input, Conv2D, MaxPooling2D, concatenate, Conv2DTranspose, Dropout, activation
+from keras.layers import Input, Conv2D, MaxPooling2D, concatenate, Conv2DTranspose, Dropout
 from keras.optimizers import Adam
 
 # Metrics
@@ -24,12 +24,6 @@ def dice_coef(y_true, y_pred):
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return (2.0 * intersection + 1.0) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1.0)
-
-# https://campar.in.tum.de/pub/milletari2016Vnet/milletari2016Vnet.pdf
-def dice_loss(y_true, y_pred):
-    loss = 1 - dice_coef(y_true, y_pred)
-    return loss
-# model.compile(...,loss=dice_loss,...)
 
 
 # IoU (already imported) - Metric
@@ -64,10 +58,18 @@ def convolution_block(input_tensor, num_filters, dropout_rate):
     x = Conv2D(num_filters, kernel_size=(3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(x)
     return x
 
+# for autoencoder upsample
+def upsample_block(input_tensor, num_filters):
+    x = Conv2DTranspose(num_filters, (2, 2), strides = (2, 2), padding='same')(input_tensor)
+    x = Conv2D(num_filters, kernel_size=(3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(x)      # strides default to 1
+    x = Conv2D(num_filters, kernel_size=(3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(x)
+    return x
+
 
 def expansive_block(copy, input_tensor, num_filters, dropout_rate):
-    # filters = num_filters / 2
-    
+    '''
+    documentation
+    '''    
     # Conv2dtranspose =! upsampling (both the concept and the keras layer). both increase dim of arrays.
     # upsampling2d is the opposite of pooling repeating rows and columns of input.
     # Conv2dtranspose performs upsampling and then convolution. 
@@ -115,8 +117,28 @@ def Unet(input_size, num_classes:int, dropout_rates:list):
 
 
 # Autoencoder
-def autoencoder():
-    pass
+def encoder(inputs):
+    # will not use the copies since there are no skip connections
+    copy1, p1 = contraction_block(input_tensor = inputs, num_filters = 32, dropout_rate=0)
+    copy2, p2 = contraction_block(input_tensor = p1, num_filters = 64, dropout_rate=0)
+    copy3, p3 = contraction_block(input_tensor = p2, num_filters = 128, dropout_rate=0)
+    copy4, p4 = contraction_block(input_tensor = p3, num_filters = 256, dropout_rate=0)
+
+    p5 = convolution_block(input_tensor = p4, num_filters = 512, dropout_rate = 0)
+    return p5
+
+def decoder(inputs):
+    u1 = upsample_block(input_tensor = inputs, num_filters = 256, dropout_rate = 0)
+    u2 = upsample_block(input_tensor = u1, num_filters = 128, dropout_rate = 0)
+    u3 = upsample_block(input_tensor = u2, num_filters = 64, dropout_rate = 0)
+    u4 = upsample_block(input_tensor = u3, num_filters = 32, dropout_rate = 0)
+    decoded = Conv2D(3, 3, padding="same", activation="sigmoid")(u4)        # sigmoid since reconstruction
+    return decoded
+
+def autoencoder(input_size):
+    input_layer = Input(input_size)
+    autoencoder = Model(input_layer, decoder(encoder(input_layer)))
+    return autoencoder
 
 
 # Attention
