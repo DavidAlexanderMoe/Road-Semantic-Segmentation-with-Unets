@@ -7,7 +7,7 @@ from tensorflow.keras import backend as K
 
 # Network Architecture
 from keras.models import Model
-from keras.layers import Input, Conv2D, MaxPooling2D, concatenate, Conv2DTranspose, Dropout
+from keras.layers import Input, Conv2D, MaxPooling2D, concatenate, Conv2DTranspose, Dropout, activation
 from keras.optimizers import Adam
 
 # Metrics
@@ -88,6 +88,7 @@ def expansive_block(copy, input_tensor, num_filters, dropout_rate):
     return x
 
 
+###### CHANGE NUM FILTERS TO NUM_FILTERS: NUM_FILTERS,*2,*4,*8,*16,*8,*4,*2,NUM_FILTERS and the last conv2d with NUM_CLASSES #########
 # Simple UNET
 def Unet(input_size, num_classes:int, dropout_rates:list):
     
@@ -109,7 +110,7 @@ def Unet(input_size, num_classes:int, dropout_rates:list):
     # since multiclass task use Softmax activation function
     output = Conv2D(filters=num_classes, kernel_size=(1, 1), activation='softmax')(p9)
     
-    model = Model(inputs=[input_layer], outputs=[output])
+    model = Model(inputs=[input_layer], outputs=[output], name='Unet')
     return model
 
 
@@ -124,11 +125,11 @@ def gating_signal():
 
 
 # Residual block: https://arxiv.org/ftp/arxiv/papers/1802/1802.06955.pdf
-def reridual_block():
+def residual_block():
     pass
 
 
-# ResUnet with Attention
+# ResUnet with Attention --- could also do only the residual unet (basically unet with residual blocks, not more than that)
 def ResUnet_att():
     pass
 
