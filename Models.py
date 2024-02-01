@@ -15,37 +15,8 @@ from keras.metrics import MeanIoU
 
 ############################################################################################################################################################################
 
-# METRICS
-
-# Dice coefficient
-# really useful in image segmentation tasks with imbalanced data
-# could also be used as a loss (return 1-dice_coef)
-def dice_coef(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    return (2.0 * intersection + 1.0) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1.0)
-
-#Jaccard coefficient
-def jacard_coef(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    return (intersection + 1.0) / (K.sum(y_true_f) + K.sum(y_pred_f) - intersection + 1.0)
-
-
-# IoU (already imported)
-def IoU(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    union = K.sum(y_true) + K.sum(y_pred) - intersection
-    return intersection / union
-
-############################################################################################################################################################################
-
 # BLOCKS
-def contraction_block(input_tensor, num_filters, doBatchNorm = True, drop_rate):
+def contraction_block(input_tensor, num_filters, doBatchNorm = True, drop_rate = None):
     x = Conv2D(num_filters, kernel_size=(3, 3), kernel_initializer='he_normal', padding='same')(input_tensor)      # strides default to 1
     if doBatchNorm:
         x = BatchNormalization()(x)             # to make computations more efficient
@@ -62,7 +33,7 @@ def contraction_block(input_tensor, num_filters, doBatchNorm = True, drop_rate):
 
 
 
-def expansive_block(copy, input_tensor, num_filters, doBatchNorm = True, drop_rate):  
+def expansive_block(copy, input_tensor, num_filters, doBatchNorm = True, drop_rate = None):  
     # Conv2dtranspose =! upsampling (both the concept and the keras layer). both increase dim of arrays.
     # upsampling2d is the opposite of pooling repeating rows and columns of input.
     # Conv2dtranspose performs upsampling and then convolution. 
@@ -87,7 +58,7 @@ def expansive_block(copy, input_tensor, num_filters, doBatchNorm = True, drop_ra
 
 
 # will be useful also for autoencoder
-def convolution_block(input_tensor, num_filters, doBatchNorm = True):
+def convolution_block(input_tensor, num_filters, drop_rate = None, doBatchNorm = True):
     x = Conv2D(num_filters, kernel_size=(3, 3), kernel_initializer='he_normal', padding='same')(input_tensor)
     if doBatchNorm:
         x = BatchNormalization()(x)
@@ -96,24 +67,25 @@ def convolution_block(input_tensor, num_filters, doBatchNorm = True):
     if doBatchNorm:
         x = BatchNormalization()(x)
     x = Activation('relu')(x)
+    x = Dropout(drop_rate)(x)
     return x
 
 
 # UNET
-def Unet(input_size, filters = 16, n_classes, activation='sigmoid'):
+def Unet(input_size, filters = 16, n_classes = None, activation='sigmoid'):
     input_layer = Input(input_size)
 
-    copy1, p1 = contraction_block(input_tensor=input_layer, num_filters = filters*1, dropout_rate=0.1, doBatchNorm=True)
-    copy2, p2 = contraction_block(input_tensor=p1, num_filters = filters*2, dropout_rate=0.1, doBatchNorm=True)
-    copy3, p3 = contraction_block(input_tensor=p2, num_filters = filters*4, dropout_rate=0.2, doBatchNorm=True)
-    copy4, p4 = contraction_block(input_tensor=p3, num_filters = filters*8, dropout_rate=0.2, doBatchNorm=True)
+    copy1, p1 = contraction_block(input_tensor=input_layer, num_filters = filters*1, drop_rate=0.1, doBatchNorm=True)
+    copy2, p2 = contraction_block(input_tensor=p1, num_filters = filters*2, drop_rate=0.1, doBatchNorm=True)
+    copy3, p3 = contraction_block(input_tensor=p2, num_filters = filters*4, drop_rate=0.2, doBatchNorm=True)
+    copy4, p4 = contraction_block(input_tensor=p3, num_filters = filters*8, drop_rate=0.2, doBatchNorm=True)
 
-    x5 = convolution_block(input_tensor=p4, num_filters=filters*16, dropout_rate = 0.2, doBatchNorm=True)
+    x5 = convolution_block(input_tensor=p4, num_filters=filters*16, drop_rate = 0.2, doBatchNorm=True)
 
-    p6 = expansive_block(copy=copy4, input_tensor=x5, num_filters = filters*8, dropout_rate = 0.2, doBatchNorm=True)
-    p7 = expansive_block(copy=copy3, input_tensor=p6, num_filters = filters*4, dropout_rate = 0.2, doBatchNorm=True)
-    p8 = expansive_block(copy=copy2, input_tensor=p7, num_filters = filters*2, dropout_rate = 0.1, doBatchNorm=True)
-    p9 = expansive_block(copy=copy1, input_tensor=p8, num_filters = filters*1, dropout_rate = 0.1, doBatchNorm=True)
+    p6 = expansive_block(copy=copy4, input_tensor=x5, num_filters = filters*8, drop_rate = 0.2, doBatchNorm=True)
+    p7 = expansive_block(copy=copy3, input_tensor=p6, num_filters = filters*4, drop_rate = 0.2, doBatchNorm=True)
+    p8 = expansive_block(copy=copy2, input_tensor=p7, num_filters = filters*2, drop_rate = 0.1, doBatchNorm=True)
+    p9 = expansive_block(copy=copy1, input_tensor=p8, num_filters = filters*1, drop_rate = 0.1, doBatchNorm=True)
 
     # num_classes should be 3 if working with OG images and masks
     output = Conv2D(filters=n_classes, kernel_size=(1, 1), activation=activation)(p9)
@@ -184,7 +156,7 @@ def residual_contraction_block(input_tensor, num_filters, doBatchNorm = True):
         residual = BatchNormalization()(residual)
     
     # sum convolution block with residual and perform 2x2 max pooling
-    res_x = Add([residual, x])
+    res_x = Add()([residual, x])
     res_x = Activation('relu')(res_x)       # act f in the end like the OG paper proposes
     # pooled = MaxPooling2D((2, 2))(res_x)
     # pooled = Dropout(drop_rate)(pooled)
@@ -192,7 +164,7 @@ def residual_contraction_block(input_tensor, num_filters, doBatchNorm = True):
     return res_x
 
 
-def ResUnet(input_size, filters = 16, n_classes, activation='sigmoid'):
+def ResUnet(input_size, filters = 16, n_classes = None, activation='sigmoid'):
     input_layer = Input(input_size)
 
     # downsample
@@ -217,40 +189,29 @@ def ResUnet(input_size, filters = 16, n_classes, activation='sigmoid'):
     x5 = Dropout(rate=0.2)(x5)
 
     # upsample
-    x6 = Conv2DTranspose(num_filters = filters*8, kernel_size = (3, 3), strides = (2, 2), padding='same')(x5)
+    x6 = Conv2DTranspose(filters = filters*8, kernel_size = (3, 3), strides = (2, 2), padding='same')(x5)
     x7 = concatenate([x6, x4])
     x8 = residual_contraction_block(input_tensor=x7, num_filters = filters*8, doBatchNorm = True)
     x8 = Dropout(rate=0.2)(x8)
 
-    x9 = Conv2DTranspose(num_filters = filters*4, kernel_size = (3, 3), strides = (2, 2), padding='same')(x8)
+    x9 = Conv2DTranspose(filters = filters*4, kernel_size = (3, 3), strides = (2, 2), padding='same')(x8)
     x10 = concatenate([x9, x3])
     x11 = residual_contraction_block(input_tensor=x10, num_filters = filters*4, doBatchNorm = True)
     x11 = Dropout(rate=0.2)(x11)
 
-    x12 = Conv2DTranspose(num_filters = filters*2, kernel_size = (3, 3), strides = (2, 2), padding='same')(x11)
+    x12 = Conv2DTranspose(filters = filters*2, kernel_size = (3, 3), strides = (2, 2), padding='same')(x11)
     x13 = concatenate([x12, x2])
     x14 = residual_contraction_block(input_tensor=x13, num_filters = filters*2, doBatchNorm = True)
     x14 = Dropout(rate=0.1)(x14)
 
-    x15 = Conv2DTranspose(num_filters = filters*1, kernel_size = (3, 3), strides = (2, 2), padding='same')(x14)
+    x15 = Conv2DTranspose(filters = filters*1, kernel_size = (3, 3), strides = (2, 2), padding='same')(x14)
     x16 = concatenate([x15, x1])
     x17 = residual_contraction_block(input_tensor=x16, num_filters = filters*1, doBatchNorm = True)
     x17 = Dropout(rate=0.1)(x17)
 
     output = Conv2D(filters=n_classes, kernel_size=(1, 1), activation=activation)(x17)
     model = Model(inputs=[input_layer], outputs=[output], name='ResUnet')
-    return model
-    
-
-
-
-
-
-
-
-
-    pass
-    
+    return model    
 
 
 ##########################################################################################################################à
@@ -262,7 +223,7 @@ def gating_signal():
 def attention_block():
     pass
 
-# ResUnet with Attention --- could also do only the residual unet (basically unet with residual blocks, not more than that)
+# ResUnet with Attention
 def ResUnet_att():
     pass
 
