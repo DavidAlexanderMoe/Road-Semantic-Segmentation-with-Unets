@@ -107,6 +107,11 @@ def Unet(input_size, filters = 16, n_classes = None, activation='sigmoid'):
     return model
 
 
+# Modelcheckpoint
+checkpointer = tf.keras.callbacks.ModelCheckpoint('model_name.h5', verbose=1, save_best_only=True)      # or .keras
+
+callbacks = [tf.keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
+             tf.keras.callbacks.TensorBoard(log_dir='logs')]
 ################################################################################################################################
 
 # Autoencoder
